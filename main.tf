@@ -1,34 +1,25 @@
-# --- 1. PROVIDER CONFIGURATION ---
-# Tells Terraform to use AWS and which version
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
+# 1. Provider and Region
 provider "aws" {
   region = "us-east-1"
 }
 
-# --- 2. NETWORK (VPC) ---
-# Creates your private "sandbox" in the cloud
+# 2. Network: VPC
 resource "aws_vpc" "devops_vpc" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
+  enable_dns_support   = true
+
   tags = {
     Name = "devops-lab-vpc"
   }
 }
 
-# The "Front Door" to let internet traffic in/out
+# 3. Network: Internet Gateway
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.devops_vpc.id
 }
 
-# A slice of the network where our servers will live
+# 4. Network: Public Subnet
 resource "aws_subnet" "public_subnet" {
   vpc_id                  = aws_vpc.devops_vpc.id
   cidr_block              = "10.0.1.0/24"
@@ -36,7 +27,7 @@ resource "aws_subnet" "public_subnet" {
   availability_zone       = "us-east-1a"
 }
 
-# The "GPS" that tells traffic to go through the Internet Gateway
+# 5. Network: Route Table
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.devops_vpc.id
 
@@ -51,14 +42,13 @@ resource "aws_route_table_association" "public_assoc" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-# --- 3. SECURITY (FIREWALL) ---
-# Rules to allow you to talk to your servers
+# 6. Security: Firewall (Security Group)
 resource "aws_security_group" "devops_sg" {
   name        = "devops-lab-sg"
   description = "Allow SSH and Web traffic"
   vpc_id      = aws_vpc.devops_vpc.id
 
-  # SSH (Port 22) - So you can log in from your Mac
+  # SSH Access
   ingress {
     from_port   = 22
     to_port     = 22
@@ -66,7 +56,7 @@ resource "aws_security_group" "devops_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTP (Port 80) - For the web servers we will build
+  # Standard Web Traffic
   ingress {
     from_port   = 80
     to_port     = 80
@@ -74,7 +64,15 @@ resource "aws_security_group" "devops_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Allow the servers to reach out to the internet (to download updates/Docker)
+  # Docker App Traffic
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Outbound (allow servers to talk to the internet)
   egress {
     from_port   = 0
     to_port     = 0
@@ -83,16 +81,16 @@ resource "aws_security_group" "devops_sg" {
   }
 }
 
-# 1. Tell AWS about your Public Key
+# 7. Keys: SSH Key Pair
 resource "aws_key_pair" "devops_auth" {
   key_name   = "devops-key"
-  public_key = file("devops-key.pub") # This reads the file you just created
+  public_key = file("devops-key.pub")
 }
 
-# 2. The Reverse Proxy Server (Ubuntu)
+# 8. Compute: Nginx Proxy Server
 resource "aws_instance" "proxy_server" {
-  instance_type          = "t2.micro" # Free Tier eligible
-  ami                    = "ami-080e1f13689e07408" # Ubuntu 22.04 LTS in us-east-1
+  ami                    = "ami-080e1f13689e07408"
+  instance_type          = "t2.micro"
   key_name               = aws_key_pair.devops_auth.key_name
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
   subnet_id              = aws_subnet.public_subnet.id
@@ -102,10 +100,10 @@ resource "aws_instance" "proxy_server" {
   }
 }
 
-# 3. The Build Agent Server (Ubuntu)
+# 9. Compute: CI/CD Build Agent
 resource "aws_instance" "build_agent" {
-  instance_type          = "t2.micro"
   ami                    = "ami-080e1f13689e07408"
+  instance_type          = "t2.micro"
   key_name               = aws_key_pair.devops_auth.key_name
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
   subnet_id              = aws_subnet.public_subnet.id
@@ -115,7 +113,7 @@ resource "aws_instance" "build_agent" {
   }
 }
 
-# 4. Output the IPs so we know how to connect
+# 10. Outputs (IP addresses for Ansible)
 output "proxy_ip" {
   value = aws_instance.proxy_server.public_ip
 }
