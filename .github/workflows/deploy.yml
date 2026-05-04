@@ -1,0 +1,20 @@
+name: Build and Deploy
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: self-hosted # This tells GitHub to use your AWS machine!
+    tasks:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Docker Image
+        run: docker build -t my-app .
+
+      - name: Run Docker Container
+        run: |
+          docker stop my-app-container || true
+          docker rm my-app-container || true
+          docker run -d --name my-app-container -p 8080:80 my-app
