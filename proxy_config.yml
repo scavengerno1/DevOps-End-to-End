@@ -10,7 +10,7 @@
           server {
               listen 80;
               location / {
-                  proxy_pass http://54.87.230.239:8080;
+                  proxy_pass http://54.242.126.175:8080;
                   proxy_set_header Host $host;
                   proxy_set_header X-Real-IP $remote_addr;
               }
